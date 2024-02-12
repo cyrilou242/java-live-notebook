@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          # configuration of settings.xml
+          server-id: ossrh
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+
+      # don't use setup-java cache - hash file pattern has issues
+      - name: Cache - restore local Maven repository
+        id: cache-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: release-${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: release-${{ runner.os }}-maven-
+      - name: set github user
+        run: |
+          git config --global user.name "jln-ci"
+          git config --global user.email "jln-ci@users.noreply.github.com"
+      - name: create release
+        run: |
+          ./mvnw -B -V -ntp -Prelease release:clean initialize release:prepare release:perform
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - uses: browser-actions/setup-chrome@v1
+      - name: generate doc
+        id: generate_doc
+        run: |
+          distribution=jln-distribution/target/$(ls ./jln-distribution/target/ | grep -E -i '^jln-distribution-[0-9]+\.[0-9]+\.[0-9]+\.jar$')
+          ./$distribution render -cp="" doc/book.jsh index.html
+          git add index.html
+          git stash
+          git fetch
+          git checkout website
+          git checkout stash -- index.html
+          git commit --allow-empty -m  "update doc" 
+          git push
+      - name: Cache - save local Maven repository
+        uses: actions/cache/save@v3
+        # save to cache only if necessary + cache even if tests failed (useful if flakiness)
+        if: steps.cache-restore.outputs.cache-hit != 'true' && ( failure() || success())
+        with:
+          path: ~/.m2/repository
+          key: release-${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+

@@ -1,0 +1,49 @@
+/*
+ * Copyright 2023 Cyril de Catheu
+ *
+ * Use of this source code is governed by an MIT-style
+ * license that can be found in the LICENSE file or at
+ * https://opensource.org/licenses/MIT.
+ */
+package tech.catheu.jln.server;
+
+import gg.jte.CodeResolver;
+import gg.jte.ContentType;
+import gg.jte.TemplateEngine;
+import gg.jte.TemplateOutput;
+import gg.jte.output.StringOutput;
+import gg.jte.resolve.DirectoryCodeResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tech.catheu.jln.Main;
+import tech.catheu.jln.utils.JavaUtils;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public class HtmlTemplateEngine {
+
+  private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+  private final TemplateEngine delegate;
+
+  public HtmlTemplateEngine() {
+    if (JavaUtils.RUN_IN_JAR) {
+      this.delegate = TemplateEngine.createPrecompiled(ContentType.Html);
+    } else {
+      LOG.warn("Using dynamic templates. This should only happen in development.");
+      final CodeResolver codeResolver = new DirectoryCodeResolver(Path.of("jln-core/src/main/jte"));
+      this.delegate = TemplateEngine.create(codeResolver, ContentType.Html);
+    }
+  }
+
+  // render is the generated notebook html
+  public String render(TemplateData model) {
+    final TemplateOutput output = new StringOutput();
+    delegate.render("index.jte", model, output);
+    return output.toString();
+  }
+
+  public record TemplateData(Main.SharedConfiguration config, boolean interactive, String render, List<Path> notebooksInPath) {}
+
+
+}
